@@ -20,7 +20,7 @@ Ouvrez `index.html` dans un navigateur, ou publiez le dépôt avec GitHub Pages.
 
 ## Paroles
 
-Les paroles d'*Abbey Road* sont protégées par le droit d'auteur et ne sont pas incluses. Le bouton **Paroles** permet de coller les vôtres (livret, site sous licence) : une ligne de texte par ligne chantée. Elles se placent automatiquement sous les accords et sont enregistrées localement.
+Les paroles d'*Abbey Road* sont protégées par le droit d'auteur et ne sont pas incluses. La zone **Coller les paroles**, juste au-dessus de la partition, permet de coller les vôtres (livret, site sous licence) : une ligne de texte par ligne chantée. Elles se placent automatiquement sous les accords et sont enregistrées localement.
 
 ## Fiabilité des grilles
 

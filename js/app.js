@@ -305,8 +305,6 @@
   }
 
   function renderScore() {
-    const anyLyrics = S.sections.some(sec => sec.lines.some(l => l.lyric));
-    $('lyricsNote').hidden = anyLyrics;
     let vocal = 0;
     $('score').innerHTML = S.sections.map(sec => {
       const bars = sec.lines.reduce((a, l) => a + l.chords.reduce((x, c) => x + c.b, 0), 0) / 4;
@@ -532,6 +530,7 @@
     S.pos = 0;
     S.sections = loadModel(song);
     renderAll();
+    fillLyricsBox();
     window.scrollTo({ top: 0 });
   }
 
@@ -542,27 +541,38 @@
     store.set('song:' + S.song.id, serialize(S.sections, S.song.bpm));
   }
 
-  function openLyrics() {
-    const vl = vocalLines();
-    $('lyricsSong').textContent = S.song.title;
-    $('lyricsCount').textContent = vl.length;
-    $('lyricsText').value = vl.map(l => l.lyric).join('\n').replace(/\n+$/, '');
-    $('lyricsStatus').textContent = '';
-    if (S.playing) setPlaying(false);
-    $('lyricsDlg').showModal();
+  /* ---------- inline lyrics box ---------- */
+  function fillLyricsBox() {
+    $('lbText').value = vocalLines().map(l => l.lyric).join('\n').replace(/\n+$/, '');
+    lyricsCount();
   }
-  $('lyricsText').addEventListener('input', () => {
-    const n = $('lyricsText').value.split('\n').filter(x => x.trim()).length;
+  function lyricsCount() {
+    const n = $('lbText').value.split('\n').filter(x => x.trim()).length;
     const want = vocalLines().length;
-    $('lyricsStatus').textContent = n === want ? '' : `${n} ligne${n > 1 ? 's' : ''} collée${n > 1 ? 's' : ''} pour ${want} lignes chantées${n > want ? ' : les dernières seront ignorées' : ''}.`;
-  });
-  $('lyricsDlg').addEventListener('close', () => {
-    if ($('lyricsDlg').returnValue !== 'save') return;
-    const rows = $('lyricsText').value.split('\n').map(x => x.trim()).filter(Boolean);
+    const el = $('lbCount');
+    el.textContent = n ? `${n} / ${want} lignes` : `${want} lignes chantées attendues`;
+    el.className = 'lb-count' + (!n ? '' : n === want ? ' ok' : ' warn');
+    el.title = n > want ? 'Les lignes en trop seront ignorées' : n && n < want ? 'Les dernières lignes resteront sans paroles' : '';
+  }
+  function applyLyrics() {
+    const rows = $('lbText').value.split('\n').map(x => x.trim()).filter(Boolean);
     vocalLines().forEach((l, k) => { l.lyric = rows[k] || ''; });
     saveModel();
+    const pos = S.pos;
     renderAll();
-  });
+    S.pos = pos; update(true);
+    lyricsCount();
+    $('lyricsBox').classList.add('flash');
+    setTimeout(() => $('lyricsBox').classList.remove('flash'), 600);
+  }
+  $('lbText').addEventListener('input', lyricsCount);
+  $('lbText').addEventListener('paste', () => setTimeout(applyLyrics, 0));
+  $('lbApply').addEventListener('click', applyLyrics);
+  $('lbClear').addEventListener('click', () => { $('lbText').value = ''; applyLyrics(); });
+  function openLyrics() {
+    $('lyricsBox').scrollIntoView({ block: 'center', behavior: 'smooth' });
+    $('lbText').focus({ preventScroll: true });
+  }
 
   function openEdit() {
     $('editSong').textContent = S.song.title;
@@ -585,6 +595,7 @@
       saveModel();
       S.pos = 0;
       renderAll();
+      fillLyricsBox();
     }
   });
   $('resetBtn').addEventListener('click', () => {
@@ -595,6 +606,7 @@
     S.pos = 0;
     $('editDlg').close('reset');
     renderAll();
+    fillLyricsBox();
   });
 
   /* ---------- controls ---------- */

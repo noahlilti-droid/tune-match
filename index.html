@@ -96,9 +96,19 @@
         <div class="strip-row" id="strip"></div>
       </section>
 
-      <section class="lyrics-note" id="lyricsNote" hidden>
-        <strong>Paroles non incluses.</strong>
-        Les paroles d'Abbey Road sont protégées par le droit d'auteur. Collez-les depuis votre livret ou un site sous licence avec le bouton <em>Paroles</em> : chaque ligne chantée se place sous ses accords, au bon temps. Elles restent enregistrées dans ce navigateur.
+      <section class="lyrics-box px" id="lyricsBox" aria-label="Coller les paroles">
+        <div class="lb-head">
+          <label class="panel-label" for="lbText">Coller les paroles</label>
+          <span class="lb-count" id="lbCount"></span>
+        </div>
+        <textarea id="lbText" rows="4" spellcheck="false" placeholder="Collez les paroles ici, une ligne par ligne chantée. Elles se placent toutes seules sous les accords."></textarea>
+        <div class="lb-foot">
+          <span class="lb-help">Paroles non incluses (droit d'auteur) : collez-les depuis votre livret. Un <code>^</code> devant une syllabe y cale l'accord.</span>
+          <span class="lb-btns">
+            <button class="btn ghost small" id="lbClear" type="button">Effacer</button>
+            <button class="btn small" id="lbApply" type="button">Placer sous les accords</button>
+          </span>
+        </div>
       </section>
 
       <section class="score" id="score" aria-live="off"></section>
@@ -123,19 +133,6 @@
       <div class="legend" id="legend"></div>
     </aside>
   </div>
-
-  <dialog class="modal px" id="lyricsDlg">
-    <form method="dialog" id="lyricsForm">
-      <h2>Paroles · <span id="lyricsSong"></span></h2>
-      <p class="modal-help">Une ligne de texte par ligne chantée, dans l'ordre. Ce morceau en attend <strong id="lyricsCount">0</strong>. Les lignes vides sont ignorées. Placez un <code>^</code> devant une syllabe pour y caler un accord à la main.</p>
-      <textarea id="lyricsText" rows="16" spellcheck="false" placeholder="Collez les paroles ici…"></textarea>
-      <div class="modal-status" id="lyricsStatus"></div>
-      <div class="modal-actions">
-        <button class="btn ghost" value="cancel" type="submit">Annuler</button>
-        <button class="btn" id="lyricsSave" value="save" type="submit">Enregistrer</button>
-      </div>
-    </form>
-  </dialog>
 
   <dialog class="modal px" id="editDlg">
     <form method="dialog" id="editForm">

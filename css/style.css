@@ -170,8 +170,19 @@ button { cursor: pointer; }
 .mini .nm { font-family: var(--font-px); font-size: 14px; font-weight: 600; }
 .mini svg { display: block; }
 
-.lyrics-note { padding: 12px 16px; border: 2px dashed var(--line); background: color-mix(in srgb, var(--ink) 80%, transparent); color: var(--mist); font-size: 13px; }
-.lyrics-note strong { color: var(--ice); font-family: var(--font-px); font-weight: 600; margin-right: 6px; }
+.lyrics-box { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.lb-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.lb-count { font-family: var(--font-px); font-size: 12px; color: var(--mist); font-variant-numeric: tabular-nums; }
+.lb-count.ok { color: var(--f-thumb); }
+.lb-count.warn { color: var(--f-ring); }
+.lyrics-box textarea { width: 100%; min-height: 84px; background: var(--ink); color: var(--ice); border: 2px dashed var(--line); padding: 10px; font-family: var(--font-mono); font-size: 13px; line-height: 1.5; resize: vertical; }
+.lyrics-box textarea:focus { border-style: solid; border-color: var(--glow); outline: none; }
+.lyrics-box textarea::placeholder { color: var(--mist); }
+.lb-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lb-help { font-size: 11.5px; color: var(--mist); flex: 1 1 260px; }
+.lb-help code { color: var(--glow); }
+.lb-btns { display: flex; gap: 8px; }
+.lyrics-box.flash { border-color: var(--glow); }
 
 /* ---------- score ---------- */
 .score { display: flex; flex-direction: column; gap: 22px; padding-bottom: 30vh; }
