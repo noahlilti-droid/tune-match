@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<title>Caméra Prompteur</title>
+<style>
+  :root {
+    --accent: #ff3b30;
+    --ui-bg: rgba(18, 18, 18, 0.55);
+    --ui-bg-strong: rgba(18, 18, 18, 0.85);
+    --fg: #ffffff;
+    --muted: rgba(255, 255, 255, 0.7);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; background: #000; color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden; overscroll-behavior: none;
+  }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  button:disabled { opacity: 0.35; cursor: default; }
+
+  #stage { position: fixed; inset: 0; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+
+  /* ---------- Texte (jamais enregistré : ce n'est pas dans le flux caméra) ---------- */
+  #notes { position: absolute; inset: 0; pointer-events: none; }
+  #notes.hidden .note { display: none; }
+  .note {
+    position: absolute; transform: translateX(-50%);
+    pointer-events: auto; width: max-content; max-width: 90vw;
+    padding: 0.2em 0.5em; border-radius: 0.35em;
+    font-weight: 700; line-height: 1.25; text-align: center;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+    color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.95), 0 0 10px rgba(0,0,0,.6);
+    outline: 2px dashed transparent; outline-offset: 4px; cursor: grab;
+  }
+  .note.bg { background: rgba(0, 0, 0, 0.45); }
+  .note.selected { outline-color: rgba(255, 255, 255, 0.85); }
+  .note.editing { cursor: text; user-select: text; -webkit-user-select: text; outline-style: solid; caret-color: #ffd60a; }
+  .note:empty::before { content: attr(data-ph); opacity: 0.55; }
+
+  #hint {
+    position: absolute; left: 50%; top: 42%; transform: translateX(-50%);
+    padding: 10px 16px; border-radius: 999px; background: var(--ui-bg);
+    color: var(--muted); font-size: 15px; pointer-events: none; white-space: nowrap;
+  }
+
+  /* ---------- Interface ---------- */
+  .ui { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; }
+  #top { top: 0; padding-top: calc(env(safe-area-inset-top) + 12px); justify-content: space-between; }
+  #tools {
+    top: calc(env(safe-area-inset-top) + 70px); justify-content: center;
+    margin: 0 auto; width: max-content; max-width: calc(100% - 32px);
+    padding: 6px 8px; border-radius: 999px; background: var(--ui-bg-strong);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); gap: 4px;
+  }
+  #tools[hidden] { display: none; }
+  #tools button { min-width: 40px; height: 40px; border-radius: 999px; font-weight: 700; font-size: 15px; padding: 0 8px; }
+  #tools button.on { background: rgba(255,255,255,.2); }
+  #tools input[type=range] { width: 110px; accent-color: #fff; }
+  #bottom { bottom: 0; padding-bottom: calc(env(safe-area-inset-bottom) + 24px); justify-content: space-between; }
+
+  .pill {
+    height: 44px; padding: 0 16px; border-radius: 999px; background: var(--ui-bg);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    font-weight: 700; font-size: 16px; display: inline-flex; align-items: center; gap: 8px;
+  }
+  .round {
+    width: 48px; height: 48px; border-radius: 50%; background: var(--ui-bg);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    display: grid; place-items: center;
+  }
+  .round svg, .pill svg, #tools svg { width: 24px; height: 24px; }
+
+  #timer {
+    display: none; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px;
+    background: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  #timer::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+  body.recording #timer { display: inline-flex; }
+
+  #recBtn {
+    width: 78px; height: 78px; border-radius: 50%; border: 5px solid #fff; padding: 0;
+    display: grid; place-items: center; background: rgba(0,0,0,.15);
+  }
+  #recBtn span { width: 60px; height: 60px; border-radius: 50%; background: var(--accent); transition: all .2s ease; }
+  body.recording #recBtn span { width: 30px; height: 30px; border-radius: 7px; }
+  .spacer { width: 48px; height: 48px; }
+
+  /* ---------- Écrans superposés ---------- */
+  .panel {
+    position: fixed; inset: 0; background: #000; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; padding: 24px 16px; text-align: center; z-index: 10;
+  }
+  .panel[hidden] { display: none; }
+  #review { padding-top: calc(env(safe-area-inset-top) + 16px); padding-bottom: calc(env(safe-area-inset-bottom) + 20px); }
+  #playback { flex: 1; min-height: 0; width: 100%; max-width: 900px; background: #111; border-radius: 12px; object-fit: contain; }
+  .row { display: flex; gap: 12px; width: 100%; max-width: 480px; }
+  .row button { flex: 1; height: 52px; border-radius: 14px; font-weight: 700; font-size: 17px; background: #2c2c2e; }
+  .row button.primary { background: #fff; color: #000; }
+  #errorMsg { max-width: 360px; color: var(--muted); line-height: 1.5; }
+  #retryBtn { height: 48px; padding: 0 24px; border-radius: 14px; background: #fff; color: #000; font-weight: 700; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 120px); transform: translateX(-50%);
+    background: var(--ui-bg-strong); padding: 10px 16px; border-radius: 999px; font-size: 15px;
+    opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 20; white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="cam" autoplay muted playsinline></video>
+  <div id="notes"></div>
+  <div id="hint">Touche « Aa » pour écrire ton texte</div>
+
+  <div id="top" class="ui">
+    <button id="addBtn" class="pill" aria-label="Ajouter un texte">Aa <span style="font-weight:600">+ Texte</span></button>
+    <div id="timer">00:00</div>
+    <button id="flipBtn" class="round" aria-label="Changer de caméra">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3l-2-3H9L7 7H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1z"/><path d="M9 13.5a3 3 0 0 1 5.2-2"/><path d="M15 13.5a3 3 0 0 1-5.2 2"/><path d="M14.5 9.5v2h-2"/><path d="M9.5 17.5v-2h2"/></svg>
+    </button>
+  </div>
+
+  <div id="tools" class="ui" hidden>
+    <button id="smallerBtn" aria-label="Texte plus petit">A−</button>
+    <input id="sizeRange" type="range" min="14" max="110" step="1" aria-label="Taille du texte">
+    <button id="biggerBtn" aria-label="Texte plus grand">A+</button>
+    <button id="bgBtn" aria-label="Fond derrière le texte">Fond</button>
+    <button id="delBtn" aria-label="Supprimer ce texte">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg>
+    </button>
+    <button id="doneBtn">OK</button>
+  </div>
+
+  <div id="bottom" class="ui">
+    <button id="eyeBtn" class="round" aria-label="Masquer / afficher le texte"></button>
+    <button id="recBtn" aria-label="Démarrer l'enregistrement"><span></span></button>
+    <div class="spacer"></div>
+  </div>
+</div>
+
+<div id="review" class="panel" hidden>
+  <video id="playback" controls playsinline></video>
+  <div class="row">
+    <button id="discardBtn">Supprimer</button>
+    <button id="saveBtn" class="primary">Enregistrer</button>
+  </div>
+</div>
+
+<div id="error" class="panel" hidden>
+  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3l-2-3H9L7 7H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>
+  <div id="errorMsg"></div>
+  <button id="retryBtn">Activer la caméra</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const stage = $('#stage'), cam = $('#cam'), notesEl = $('#notes'), hint = $('#hint');
+  const tools = $('#tools'), sizeRange = $('#sizeRange'), bgBtn = $('#bgBtn');
+  const flipBtn = $('#flipBtn'), recBtn = $('#recBtn'), eyeBtn = $('#eyeBtn'), timerEl = $('#timer');
+  const review = $('#review'), playback = $('#playback'), saveBtn = $('#saveBtn'), discardBtn = $('#discardBtn');
+  const errorPanel = $('#error'), errorMsg = $('#errorMsg');
+
+  const ICON_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const ICON_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1"/><path d="M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+
+  // ---------- Stockage local (le texte reste quand on rouvre l'app) ----------
+  const KEY = 'cam-prompteur:';
+  const load = (k) => { try { return JSON.parse(localStorage.getItem(KEY + k)); } catch { return null; } };
+  const store = (k, v) => { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch {} };
+
+  let notes = Array.isArray(load('notes')) ? load('notes') : [];
+  let facing = load('facing') === 'environment' ? 'environment' : 'user';
+  let textHidden = false;
+  let selectedId = null, editingId = null;
+  const saveNotes = () => store('notes', notes);
+
+  // ---------- Toast ----------
+  let toastT;
+  function toast(msg) {
+    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  // ---------- Caméra ----------
+  let stream = null;
+  async function startCamera() {
+    errorPanel.hidden = true;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return showError(window.isSecureContext
+        ? "Ce navigateur ne permet pas d'utiliser la caméra."
+        : "La caméra ne marche que si la page est ouverte en https:// (ou en local).");
+    }
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    const video = { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video, audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch (e) {
+      try { // micro refusé ou indisponible : on garde au moins la vidéo
+        stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+        toast('Micro indisponible : vidéo sans son');
+      } catch (e2) {
+        stream = null;
+        return showError(e2 && e2.name === 'NotAllowedError'
+          ? "L'accès à la caméra a été refusé. Autorise-le dans les réglages du navigateur, puis réessaie."
+          : "Impossible d'ouvrir la caméra (" + (e2 && e2.name || 'erreur') + ").");
+      }
+    }
+    cam.srcObject = stream;
+    cam.style.transform = facing === 'user' ? 'scaleX(-1)' : ''; // effet miroir à l'écran seulement
+    try { await cam.play(); } catch {}
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const n = devices.filter((d) => d.kind === 'videoinput').length;
+      flipBtn.style.visibility = n > 1 || n === 0 ? 'visible' : 'hidden';
+    } catch {}
+  }
+  function showError(msg) { errorMsg.textContent = msg; errorPanel.hidden = false; }
+  $('#retryBtn').addEventListener('click', startCamera);
+
+  flipBtn.addEventListener('click', () => {
+    if (isRecording()) return;
+    facing = facing === 'user' ? 'environment' : 'user';
+    store('facing', facing);
+    startCamera();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { if (isRecording()) stopRec(); return; }
+    const track = stream && stream.getVideoTracks()[0];
+    if (review.hidden && (!track || track.readyState === 'ended')) startCamera();
+  });
+
+  // ---------- Textes ----------
+  const noteEl = (id) => notesEl.querySelector('[data-id="' + id + '"]');
+  const findNote = (id) => notes.find((n) => n.id === id);
+
+  function paint(n) {
+    let e = noteEl(n.id);
+    if (!e) {
+      e = document.createElement('div');
+      e.className = 'note'; e.dataset.id = n.id; e.dataset.ph = 'Écris ou colle ton texte…';
+      e.textContent = n.text;
+      notesEl.appendChild(e);
+    }
+    e.style.left = n.x * 100 + '%';
+    e.style.top = n.y * 100 + '%';
+    e.style.fontSize = n.size + 'px';
+    e.classList.toggle('bg', !!n.bg);
+    e.classList.toggle('selected', n.id === selectedId);
+    e.classList.toggle('editing', n.id === editingId);
+  }
+  function paintAll() {
+    notes.forEach(paint);
+    hint.style.display = notes.length || textHidden ? 'none' : '';
+  }
+
+  function select(id) {
+    selectedId = id;
+    const n = id && findNote(id);
+    tools.hidden = !n;
+    if (n) { sizeRange.value = n.size; bgBtn.classList.toggle('on', !!n.bg); }
+    paintAll();
+  }
+
+  function startEdit(id) {
+    if (editingId && editingId !== id) stopEdit();
+    select(id);
+    editingId = id;
+    const e = noteEl(id);
+    e.contentEditable = 'plaintext-only';
+    if (e.contentEditable !== 'plaintext-only') e.contentEditable = 'true';
+    paint(findNote(id));
+    e.focus();
+    const r = document.createRange(); r.selectNodeContents(e); r.collapse(false);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  }
+
+  function stopEdit() {
+    if (!editingId) return;
+    const id = editingId, n = findNote(id), e = noteEl(id);
+    editingId = null;
+    if (e) { e.contentEditable = 'false'; if (document.activeElement === e) e.blur(); }
+    if (n && e) n.text = e.innerText.replace(/\n$/, '');
+    if (n && !n.text.trim()) removeNote(id); else { paintAll(); saveNotes(); }
+  }
+
+  function removeNote(id) {
+    notes = notes.filter((n) => n.id !== id);
+    const e = noteEl(id); if (e) e.remove();
+    if (selectedId === id) select(null);
+    if (editingId === id) editingId = null;
+    paintAll(); saveNotes();
+  }
+
+  function addNote() {
+    if (textHidden) toggleText();
+    const n = { id: 'n' + Date.now().toString(36), text: '', x: 0.5, y: 0.22 + (notes.length % 4) * 0.08, size: 28, bg: true };
+    notes.push(n);
+    paint(n);
+    startEdit(n.id);
+  }
+
+  function setSize(n, size) {
+    n.size = Math.round(Math.max(12, Math.min(140, size)));
+    if (n.id === selectedId) sizeRange.value = n.size;
+    paint(n);
+  }
+
+  notesEl.addEventListener('input', (ev) => {
+    const e = ev.target.closest('.note'); const n = e && findNote(e.dataset.id);
+    if (n) { n.text = e.innerText; saveNotes(); }
+  });
+  notesEl.addEventListener('paste', (ev) => { // coller toujours en texte brut
+    const text = ev.clipboardData && ev.clipboardData.getData('text/plain');
+    if (text == null) return;
+    ev.preventDefault();
+    document.execCommand('insertText', false, text);
+  });
+  notesEl.addEventListener('focusout', (ev) => {
+    const e = ev.target.closest('.note');
+    if (e && e.dataset.id === editingId) stopEdit();
+  });
+
+  $('#addBtn').addEventListener('click', addNote);
+  // Les boutons de la barre d'outils ne doivent pas fermer le clavier
+  tools.querySelectorAll('button').forEach((b) => b.addEventListener('pointerdown', (e) => e.preventDefault()));
+  $('#smallerBtn').addEventListener('click', () => { const n = findNote(selectedId); if (n) { setSize(n, n.size - 4); saveNotes(); } });
+  $('#biggerBtn').addEventListener('click', () => { const n = findNote(selectedId); if (n) { setSize(n, n.size + 4); saveNotes(); } });
+  sizeRange.addEventListener('input', () => { const n = findNote(selectedId); if (n) { setSize(n, +sizeRange.value); saveNotes(); } });
+  bgBtn.addEventListener('click', () => {
+    const n = findNote(selectedId); if (!n) return;
+    n.bg = !n.bg; bgBtn.classList.toggle('on', n.bg); paint(n); saveNotes();
+  });
+  $('#delBtn').addEventListener('click', () => { if (selectedId) removeNote(selectedId); });
+  $('#doneBtn').addEventListener('click', () => { stopEdit(); select(null); });
+
+  function toggleText() {
+    textHidden = !textHidden;
+    notesEl.classList.toggle('hidden', textHidden);
+    eyeBtn.innerHTML = textHidden ? ICON_EYE_OFF : ICON_EYE;
+    if (textHidden) { stopEdit(); select(null); }
+    paintAll();
+  }
+  eyeBtn.innerHTML = ICON_EYE;
+  eyeBtn.addEventListener('click', toggleText);
+
+  // ---------- Gestes : glisser pour déplacer, pincer pour agrandir ----------
+  const pointers = new Map();
+  let gesture = null;
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  stage.addEventListener('pointerdown', (ev) => {
+    if (ev.target.closest('.ui')) return;
+    const e = ev.target.closest('.note');
+    if (e && e.dataset.id === editingId) return; // on laisse placer le curseur / sélectionner le texte
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+
+    if (pointers.size === 2 && selectedId) {
+      const [a, b] = [...pointers.values()];
+      gesture = { type: 'pinch', id: selectedId, d0: dist(a, b) || 1, s0: findNote(selectedId).size };
+      return;
+    }
+    if (pointers.size !== 1) return;
+    if (editingId) stopEdit();
+    if (e) {
+      const n = findNote(e.dataset.id);
+      select(n.id);
+      gesture = { type: 'drag', id: n.id, x0: ev.clientX, y0: ev.clientY, nx: n.x, ny: n.y, moved: false };
+    } else {
+      gesture = { type: 'empty', x0: ev.clientX, y0: ev.clientY, moved: false };
+    }
+  });
+
+  stage.addEventListener('pointermove', (ev) => {
+    if (!pointers.has(ev.pointerId)) return;
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (!gesture) return;
+    if (gesture.type === 'pinch' && pointers.size >= 2) {
+      const [a, b] = [...pointers.values()];
+      const n = findNote(gesture.id);
+      if (n) setSize(n, gesture.s0 * dist(a, b) / gesture.d0);
+    } else if (gesture.type === 'drag' || gesture.type === 'empty') {
+      const dx = ev.clientX - gesture.x0, dy = ev.clientY - gesture.y0;
+      if (Math.hypot(dx, dy) > 6) gesture.moved = true;
+      if (gesture.type === 'drag' && gesture.moved) {
+        const n = findNote(gesture.id); if (!n) return;
+        n.x = Math.max(0.05, Math.min(0.95, gesture.nx + dx / stage.clientWidth));
+        n.y = Math.max(-0.3, Math.min(0.95, gesture.ny + dy / stage.clientHeight));
+        paint(n);
+      }
+    }
+  });
+
+  function endPointer(ev) {
+    if (!pointers.has(ev.pointerId)) return;
+    pointers.delete(ev.pointerId);
+    if (!gesture) return;
+    if (gesture.type === 'pinch') {
+      if (pointers.size === 0) { gesture = null; saveNotes(); }
+      return;
+    }
+    if (ev.type === 'pointerup' && !gesture.moved) {
+      if (gesture.type === 'drag') startEdit(gesture.id);   // simple toucher = modifier le texte
+      else if (gesture.type === 'empty') select(null);        // toucher à côté = désélectionner
+    }
+    if (gesture.type === 'drag') saveNotes();
+    gesture = null;
+  }
+  stage.addEventListener('pointerup', endPointer);
+  stage.addEventListener('pointercancel', endPointer);
+
+  // Molette (ordinateur) : taille du texte sélectionné
+  stage.addEventListener('wheel', (ev) => {
+    const n = findNote(selectedId); if (!n) return;
+    ev.preventDefault(); setSize(n, n.size - ev.deltaY * 0.05); saveNotes();
+  }, { passive: false });
+
+  // ---------- Enregistrement ----------
+  let recorder = null, chunks = [], recStart = 0, timerInt = null, wakeLock = null;
+  let lastBlob = null, lastUrl = null, saved = false;
+  const isRecording = () => recorder && recorder.state === 'recording';
+
+  function pickMime() {
+    const list = ['video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+    return list.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+  }
+
+  async function startRec() {
+    if (!stream) return startCamera();
+    if (!window.MediaRecorder) return toast("Ce navigateur ne peut pas enregistrer de vidéo");
+    stopEdit(); select(null);
+    chunks = [];
+    const mimeType = pickMime();
+    try { recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 8000000 } : {}); }
+    catch { recorder = new MediaRecorder(stream); }
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = onRecStop;
+    recorder.start(1000);
+    recStart = Date.now();
+    document.body.classList.add('recording');
+    recBtn.setAttribute('aria-label', "Arrêter l'enregistrement");
+    flipBtn.disabled = true;
+    updateTimer(); timerInt = setInterval(updateTimer, 250);
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+  }
+
+  function stopRec() { if (isRecording()) recorder.stop(); }
+
+  function updateTimer() {
+    const s = Math.floor((Date.now() - recStart) / 1000);
+    timerEl.textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  function onRecStop() {
+    clearInterval(timerInt);
+    document.body.classList.remove('recording');
+    recBtn.setAttribute('aria-label', "Démarrer l'enregistrement");
+    flipBtn.disabled = false;
+    try { wakeLock && wakeLock.release(); } catch {} wakeLock = null;
+    if (!chunks.length) return toast('Vidéo trop courte');
+    lastBlob = new Blob(chunks, { type: recorder.mimeType || chunks[0].type || 'video/webm' });
+    if (lastUrl) URL.revokeObjectURL(lastUrl);
+    lastUrl = URL.createObjectURL(lastBlob);
+    saved = false;
+    discardBtn.textContent = 'Supprimer';
+    playback.src = lastUrl;
+    review.hidden = false;
+  }
+
+  recBtn.addEventListener('click', () => (isRecording() ? stopRec() : startRec()));
+
+  function fileName() {
+    const d = new Date(), p = (x) => String(x).padStart(2, '0');
+    const ext = lastBlob.type.includes('mp4') ? 'mp4' : 'webm';
+    return 'video-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.' + ext;
+  }
+
+  saveBtn.addEventListener('click', async () => {
+    if (!lastBlob) return;
+    const name = fileName();
+    const file = new File([lastBlob], name, { type: lastBlob.type });
+    const mobile = matchMedia('(pointer: coarse)').matches;
+    if (mobile && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); markSaved(); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = lastUrl; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    markSaved();
+  });
+  function markSaved() { saved = true; discardBtn.textContent = 'Nouvelle vidéo'; toast('Vidéo enregistrée'); }
+
+  discardBtn.addEventListener('click', () => {
+    if (!saved && !confirm('Supprimer cette vidéo ?')) return;
+    playback.pause(); playback.removeAttribute('src'); playback.load();
+    if (lastUrl) URL.revokeObjectURL(lastUrl);
+    lastBlob = lastUrl = null;
+    review.hidden = true;
+    const track = stream && stream.getVideoTracks()[0];
+    if (!track || track.readyState === 'ended') startCamera();
+  });
+
+  // ---------- Démarrage ----------
+  paintAll();
+  startCamera();
+})();
+</script>
+</body>
+</html>
